@@ -13,12 +13,13 @@ import { TextInput } from "@opencode/ui/text-input"
 import { Tooltip } from "@opencode/ui/tooltip"
 import { useDialog } from "@opencode/ui/context/dialog"
 import { getFilename } from "@opencode/util/path"
-import { createEffect, createMemo, createResource, For, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useGlobal } from "@/runtime/server/runtime"
 import { inferHomeDirectory } from "@/runtime/server/global-sync/bootstrap"
 import { useLanguage } from "@/runtime/i18n/language"
 import { ServerConnection, serverName } from "@/runtime/server/registry"
+import { errorMessage } from "@/shell/layout/helpers"
 import { pathKey } from "@/workspaces/path-key"
 import type { LocationRef } from "@opencode/client/promise"
 import {
@@ -42,6 +43,13 @@ import {
   pickerAbsolutePath,
 } from "./domain"
 import "./dialog.css"
+
+function repoNameFromUrl(input: string) {
+  const trimmed = input.trim().replace(/\/+$/, "").replace(/\.git$/, "")
+  const lastSlash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf(":"))
+  if (lastSlash === -1) return trimmed || ""
+  return trimmed.slice(lastSlash + 1) || ""
+}
 
 const TREE_SPRITE_SHEET = `<svg xmlns="http://www.w3.org/2000/svg" data-icon-sprite aria-hidden="true" width="0" height="0" style="display:none"><symbol id="picker-chevron-down" viewBox="0 0 14 14"><path d="M4 5.5L7 8.5L10 5.5" fill="none" stroke="currentColor"/></symbol></svg>`
 
@@ -83,6 +91,44 @@ export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
     error: false,
     rootValid: false,
   })
+
+  const [sourceTab, setSourceTab] = createSignal<"local" | "github">("local")
+  const [gitUrl, setGitUrl] = createSignal("")
+  const [gitDir, setGitDir] = createSignal("")
+  const [gitDirEdited, setGitDirEdited] = createSignal(false)
+  const [gitBranch, setGitBranch] = createSignal("")
+  const [gitCloning, setGitCloning] = createSignal(false)
+  const [gitError, setGitError] = createSignal("")
+
+  const onGitUrlChange = (value: string) => {
+    setGitUrl(value)
+    setGitError("")
+    if (!gitDirEdited()) {
+      const repo = repoNameFromUrl(value)
+      const base = home() ? `${home()}/Projects` : "~/Projects"
+      setGitDir(repo ? `${base}/${repo}` : "")
+    }
+  }
+
+  const cloneProject = async () => {
+    const url = gitUrl().trim()
+    if (!url) return
+    setGitCloning(true)
+    setGitError("")
+    try {
+      const res = await sdk.api.project.clone({
+        url,
+        directory: gitDir().trim() ? gitDir().trim() : undefined,
+        branch: gitBranch().trim() ? gitBranch().trim() : undefined,
+      })
+      props.onSelect(res.directory)
+      dialog.close()
+    } catch (cause: unknown) {
+      setGitError(errorMessage(cause, "Failed to clone repository"))
+    } finally {
+      setGitCloning(false)
+    }
+  }
 
   const listings = new Map<string, Promise<Array<{ name: string; type: "file" | "directory" }> | undefined>>()
   const loads = createPriorityTaskQueue<Array<{ name: string; type: "file" | "directory" }> | undefined>(3)
@@ -679,10 +725,100 @@ export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
               </div>
             )}
           </Show>
+          <Show when={(props.mode ?? "directory") === "directory"}>
+            <div class="flex gap-2 pt-1">
+              <Button
+                size="small"
+                variant={sourceTab() === "local" ? "contrast" : "ghost"}
+                onClick={() => setSourceTab("local")}
+              >
+                Local Folder
+              </Button>
+              <Button
+                size="small"
+                variant={sourceTab() === "github" ? "contrast" : "ghost"}
+                onClick={() => setSourceTab("github")}
+              >
+                From GitHub URL
+              </Button>
+            </div>
+          </Show>
         </div>
       </DialogHeader>
       <Divider />
-      <DialogBody class="directory-picker-body">
+      <Show
+        when={sourceTab() === "local"}
+        fallback={
+          <>
+            <DialogBody class="directory-picker-body">
+              <div class="flex flex-col gap-4 py-2">
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-xs font-medium text-v2-text-text-muted">
+                    GitHub Repository URL or owner/repo
+                  </label>
+                  <TextInput
+                    value={gitUrl()}
+                    placeholder="https://github.com/owner/repository or owner/repo"
+                    autofocus
+                    disabled={gitCloning()}
+                    onInput={(e) => onGitUrlChange(e.currentTarget.value)}
+                  />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-xs font-medium text-v2-text-text-muted">
+                    Destination Directory
+                  </label>
+                  <TextInput
+                    value={gitDir()}
+                    placeholder={home() ? `${home()}/Projects/...` : "~/Projects/..."}
+                    disabled={gitCloning()}
+                    onInput={(e) => {
+                      setGitDirEdited(true)
+                      setGitDir(e.currentTarget.value)
+                    }}
+                  />
+                </div>
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-xs font-medium text-v2-text-text-muted">
+                    Branch (optional)
+                  </label>
+                  <TextInput
+                    value={gitBranch()}
+                    placeholder="main"
+                    disabled={gitCloning()}
+                    onInput={(e) => setGitBranch(e.currentTarget.value)}
+                  />
+                </div>
+                <Show when={gitError()}>
+                  {(error) => (
+                    <div class="rounded-md bg-v2-feedback-error-bg p-2 text-xs text-v2-feedback-error-text">
+                      {error()}
+                    </div>
+                  )}
+                </Show>
+                <Show when={gitCloning()}>
+                  <div class="flex items-center gap-2 text-xs text-v2-text-text-muted">
+                    <span>Cloning repository from GitHub... This may take a moment.</span>
+                  </div>
+                </Show>
+              </div>
+            </DialogBody>
+            <DialogFooter>
+              <Button variant="neutral" disabled={gitCloning()} onClick={() => dialog.close()}>
+                {language.t("common.cancel")}
+              </Button>
+              <Button
+                variant="contrast"
+                disabled={!gitUrl().trim() || gitCloning()}
+                onClick={cloneProject}
+              >
+                {gitCloning() ? "Cloning..." : "Clone & Open"}
+              </Button>
+            </DialogFooter>
+          </>
+        }
+      >
+        <DialogBody class="directory-picker-body">
         <div class="directory-picker-path" ref={pathArea}>
           <TextInput
             value={state.input}
@@ -825,6 +961,7 @@ export function DirectoryPickerDialog(props: DirectoryPickerDialogProps) {
           {action[policy.action]}
         </Button>
       </DialogFooter>
+      </Show>
     </Dialog>
   )
 }
