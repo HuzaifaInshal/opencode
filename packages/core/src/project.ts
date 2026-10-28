@@ -3,6 +3,7 @@ export * as Project from "./project.js"
 import { Cache, Context, Duration, Effect, Layer, Schedule, Schema, Scope } from "effect"
 import { ChildProcess } from "effect/process"
 import { and, asc, desc, eq, gte, isNotNull, isNull, lt, lte, ne, sql } from "drizzle-orm"
+import os from "os"
 import path from "path"
 import { AbsolutePath } from "./schema.js"
 import { Bus } from "./bus.js"
@@ -32,6 +33,18 @@ export interface Info extends Schema.Schema.Type<typeof Info> {}
 
 export const UpdateInput = ProjectSchema.UpdateInput
 export type UpdateInput = ProjectSchema.UpdateInput
+
+export const CloneInput = ProjectSchema.CloneInput
+export type CloneInput = ProjectSchema.CloneInput
+
+export const CloneOutput = ProjectSchema.CloneOutput
+export type CloneOutput = ProjectSchema.CloneOutput
+
+export class CloneError extends Schema.TaggedError<CloneError>()("Project.CloneError", {
+  url: Schema.String,
+  message: Schema.String,
+  directory: Schema.optional(AbsolutePath),
+}) {}
 
 export class NotFoundError extends Schema.TaggedError<NotFoundError>()("Project.NotFoundError", {
   projectID: ID,
@@ -85,6 +98,7 @@ export interface Interface {
   readonly resolve: (input: AbsolutePath, options?: ResolveOptions) => Effect.Effect<Resolved>
   /** Archives Projects whose known directories are all gone; resolving a Project unarchives it. */
   readonly sweep: () => Effect.Effect<void>
+  readonly clone: (input: CloneInput) => Effect.Effect<CloneOutput, CloneError>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/Project") {}
@@ -327,6 +341,25 @@ const layer = Layer.effect(
       return `${host.toLowerCase()}/${pathname}`
     }
 
+    function normalizeGitUrl(input: string) {
+      const trimmed = input.trim()
+      if (!trimmed) return undefined
+      if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(trimmed)) {
+        return `https://github.com/${trimmed}.git`
+      }
+      if (trimmed.startsWith("github.com/")) {
+        return `https://${trimmed}.git`
+      }
+      return trimmed
+    }
+
+    function repoNameFromUrl(input: string) {
+      const trimmed = input.trim().replace(/\/+$/, "").replace(/\.git$/, "")
+      const lastSlash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf(":"))
+      if (lastSlash === -1) return trimmed || "project"
+      return trimmed.slice(lastSlash + 1) || "project"
+    }
+
     const rootCommit = Effect.fnUntraced(function* (repo: Git.Repository) {
       const root = (yield* git.history.rootCommits(repo))[0]
       return root ? ID.make(root) : undefined
@@ -486,7 +519,75 @@ const layer = Layer.effect(
       )
     })
 
-    return Service.of({ list, update, activate, resolve, sweep })
+    const clone = Effect.fn("Project.clone")(function* (input: CloneInput) {
+      const remoteUrl = normalizeGitUrl(input.url)
+      if (!remoteUrl) {
+        return yield* new CloneError({
+          url: input.url,
+          message: "Invalid repository URL",
+        })
+      }
+
+      const repoName = repoNameFromUrl(remoteUrl)
+      const targetDir = input.directory
+        ? AbsolutePath.make(yield* fs.resolve(input.directory).pipe(Effect.orDie))
+        : AbsolutePath.make(path.resolve(process.env.HOME || os.homedir(), "Projects", repoName))
+
+      const exists = yield* fs.exists(targetDir).pipe(Effect.orElseSucceed(() => false))
+      if (exists) {
+        const entries = yield* fs.readDirectory(targetDir).pipe(Effect.orElseSucceed(() => []))
+        if (entries.length > 0) {
+          return yield* new CloneError({
+            url: input.url,
+            directory: targetDir,
+            message: `Destination directory '${targetDir}' already exists and is not empty`,
+          })
+        }
+      } else {
+        yield* fs.ensureDir(path.dirname(targetDir)).pipe(Effect.orElseSucceed(() => undefined))
+      }
+
+      yield* git.repo
+        .clone({
+          remote: remoteUrl,
+          directory: targetDir,
+          branch: input.branch,
+          depth: input.depth,
+        })
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new CloneError({
+                url: input.url,
+                directory: targetDir,
+                message: error.message || "Failed to clone repository",
+              }),
+          ),
+        )
+
+      const resolved = yield* resolve(targetDir).pipe(Effect.orDie)
+      const row = yield* db
+        .select()
+        .from(ProjectTable)
+        .where(eq(ProjectTable.id, resolved.id))
+        .get()
+        .pipe(Effect.orDie)
+
+      if (!row) {
+        return yield* new CloneError({
+          url: input.url,
+          directory: targetDir,
+          message: "Project resolution failed after cloning",
+        })
+      }
+
+      return {
+        project: fromRow(row),
+        directory: targetDir,
+      }
+    })
+
+    return Service.of({ list, update, activate, resolve, sweep, clone })
   }),
 )
 

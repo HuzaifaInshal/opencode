@@ -15,6 +15,7 @@ export const globalProjectNode = makeGlobalNode({
         update: () => Effect.die("not implemented"),
         activate: () => Effect.void,
         sweep: () => Effect.void,
+        clone: () => Effect.die("not implemented"),
         resolve: (directory) => {
           const project = { id: Project.ID.global, directory, canonical: directory }
           return upsertProject(database.db, project).pipe(Effect.orDie, Effect.as(project))

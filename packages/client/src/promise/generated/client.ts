@@ -173,6 +173,8 @@ import type {
   ProjectListOutput,
   ProjectUpdateInput,
   ProjectUpdateOutput,
+  ProjectCloneInput,
+  ProjectCloneOutput,
   FormListInput,
   FormListOutput,
   PermissionRequestListInput,
@@ -1612,6 +1614,18 @@ export function make(options: ClientOptions) {
             },
             successStatus: 200,
             declaredStatuses: [400, 401, 404],
+            empty: false,
+          },
+          requestOptions,
+        ),
+      clone: (input: ProjectCloneInput, requestOptions?: RequestOptions) =>
+        request<ProjectCloneOutput>(
+          {
+            method: "POST",
+            path: `/api/project/clone`,
+            body: { url: input["url"], directory: input["directory"], branch: input["branch"], depth: input["depth"] },
+            successStatus: 200,
+            declaredStatuses: [400, 401, 409],
             empty: false,
           },
           requestOptions,

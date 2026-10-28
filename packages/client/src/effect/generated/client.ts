@@ -179,6 +179,8 @@ import type {
   ProjectListOutput,
   ProjectUpdateInput,
   ProjectUpdateOutput,
+  ProjectCloneInput,
+  ProjectCloneOutput,
   FormListInput,
   FormListOutput,
   PermissionRequestListInput,
@@ -1217,9 +1219,17 @@ const EndpointProjectUpdate = (raw: RawClient["server.project"]) => (input: Proj
     }).pipe(Effect.mapError(mapClientError)),
   )
 
+const EndpointProjectClone = (raw: RawClient["server.project"]) => (input: ProjectCloneInput) =>
+  preserveEffect<ProjectCloneOutput>()(
+    raw["project.clone"]({
+      payload: { url: input["url"], directory: input["directory"], branch: input["branch"], depth: input["depth"] },
+    }).pipe(Effect.mapError(mapClientError)),
+  )
+
 const adaptGroupProject = (raw: RawClient["server.project"]) => ({
   list: EndpointProjectList(raw),
   update: EndpointProjectUpdate(raw),
+  clone: EndpointProjectClone(raw),
 })
 
 const EndpointFormList = (raw: RawClient["server.form"]) => (input?: FormListInput) =>

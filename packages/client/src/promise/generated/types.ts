@@ -2071,6 +2071,8 @@ export type CredentialValue = CredentialOAuth | CredentialKey | CredentialExtern
 
 export type ConnectionInfo = ConnectionCredentialInfo | ConnectionEnvInfo
 
+export type ProjectCloneOutput2 = { project: Project; directory: AbsolutePath }
+
 export type PtyCreated = {
   id: EventID
   created: number
@@ -4027,6 +4029,15 @@ export type ProjectUpdateInput = {
 }
 
 export type ProjectUpdateOutput = Project
+
+export type ProjectCloneInput = {
+  readonly url: string
+  readonly directory?: string | undefined
+  readonly branch?: string | undefined
+  readonly depth?: number | undefined
+}
+
+export type ProjectCloneOutput = ProjectCloneOutput2
 
 export type FormListInput = { readonly location?: { readonly directory?: string | undefined } | undefined }
 

@@ -1769,9 +1769,19 @@ export type ProjectUpdateInput = {
 export type ProjectUpdateOutput = Project.Info
 export type ProjectUpdateOperation<E = never> = (input: ProjectUpdateInput) => Effect.Effect<ProjectUpdateOutput, E>
 
+export type ProjectCloneInput = {
+  readonly url: string
+  readonly directory?: AbsolutePath | undefined
+  readonly branch?: string | undefined
+  readonly depth?: number | undefined
+}
+export type ProjectCloneOutput = Project.CloneOutput
+export type ProjectCloneOperation<E = never> = (input: ProjectCloneInput) => Effect.Effect<ProjectCloneOutput, E>
+
 export interface ProjectApi<E = never> {
   readonly list: ProjectListOperation<E>
   readonly update: ProjectUpdateOperation<E>
+  readonly clone: ProjectCloneOperation<E>
 }
 
 export type FormListInput = { readonly location?: { readonly directory?: string | undefined } | undefined }

@@ -2,7 +2,7 @@ export * as Project from "./project.js"
 
 import { Schema } from "effect"
 import { ephemeral, inventory } from "./event.js"
-import { AbsolutePath, NonNegativeInt, optional } from "./schema.js"
+import { AbsolutePath, NonNegativeInt, PositiveInt, optional } from "./schema.js"
 import { ProjectID } from "./project-id.js"
 
 export const ID = ProjectID
@@ -57,6 +57,20 @@ export const UpdateInput = Schema.Struct({
   commands: optional(Commands),
 }).annotate({ identifier: "Project.UpdateInput" })
 export interface UpdateInput extends Schema.Schema.Type<typeof UpdateInput> {}
+
+export const CloneInput = Schema.Struct({
+  url: Schema.String.annotate({ description: "GitHub or Git repository URL" }),
+  directory: optional(AbsolutePath).annotate({ description: "Local destination directory" }),
+  branch: optional(Schema.String).annotate({ description: "Branch or revision to clone" }),
+  depth: optional(PositiveInt).annotate({ description: "Shallow clone depth" }),
+}).annotate({ identifier: "Project.CloneInput" })
+export interface CloneInput extends Schema.Schema.Type<typeof CloneInput> {}
+
+export const CloneOutput = Schema.Struct({
+  project: Info,
+  directory: AbsolutePath,
+}).annotate({ identifier: "Project.CloneOutput" })
+export interface CloneOutput extends Schema.Schema.Type<typeof CloneOutput> {}
 
 const Updated = ephemeral({ type: "project.updated", schema: Info.fields })
 export const Event = { Updated, Definitions: inventory(Updated) }
