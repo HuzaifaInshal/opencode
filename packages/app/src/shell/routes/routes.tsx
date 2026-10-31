@@ -19,6 +19,8 @@ const DraftRoute = lazy(() => import("@/new-session/route").then((module) => ({ 
 
 const SettingsScreen = lazy(() => import("@/settings/shell").then((module) => ({ default: module.SettingsScreen })))
 
+const ChatScreen = lazy(() => import("@/chat/screen").then((module) => ({ default: module.ChatScreen })))
+
 const ConnectServerScreen = lazy(() =>
   import("@/servers/connect/screen").then((module) => ({ default: module.ConnectServerScreen })),
 )
@@ -40,6 +42,8 @@ export function preloadRoute(url: string) {
   if (pathname === "/new-session") return DraftRoute.preload().then(() => undefined)
 
   if (pathname === "/settings") return SettingsScreen.preload().then(() => undefined)
+
+  if (pathname === "/chat" || pathname.startsWith("/chat/")) return ChatScreen.preload().then(() => undefined)
 
   if (/^\/server\/[^/]+\/session\/[^/]+$/.test(pathname))
     return TargetSessionRouteContent.preload().then(() => undefined)
@@ -71,8 +75,36 @@ export function AppRoutes() {
         )}
       />
       <Route path="/new-session" component={DraftRoute} />
+      <Route
+        path="/chat"
+        component={() => (
+          <PrimaryServerRoute>
+            <ChatScreen />
+          </PrimaryServerRoute>
+        )}
+      />
+      <Route
+        path="/chat/:id"
+        component={() => (
+          <PrimaryServerRoute>
+            <ChatScreen />
+          </PrimaryServerRoute>
+        )}
+      />
       {ComponentsLab && <Route path="/components" component={ComponentsLab} />}
     </Route>
+  )
+}
+
+function PrimaryServerRoute(props: ParentProps) {
+  const servers = useServers()
+
+  const connection = createMemo(() => servers.visible[0])
+
+  return (
+    <Show when={connection()} keyed>
+      {(connection) => <ServerProvider conn={connection}>{props.children}</ServerProvider>}
+    </Show>
   )
 }
 

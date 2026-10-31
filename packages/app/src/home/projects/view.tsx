@@ -1,5 +1,6 @@
 import { createMemo, For, type JSX, onCleanup, Show, splitProps } from "solid-js"
 import { createStore } from "solid-js/store"
+import { useNavigate } from "@solidjs/router"
 import { Popover } from "@kobalte/core/popover"
 import {
   displayName,
@@ -149,6 +150,7 @@ export function HomeProjectsView(props: HomeProjectsViewProps) {
 }
 
 function HomeProjectsPanel(props: HomeProjectsViewProps) {
+  const navigate = useNavigate()
   const [contextMenu, setContextMenu] = createStore<{ open: string | undefined }>({ open: undefined })
 
   const contextMenuProps = {
@@ -172,6 +174,25 @@ function HomeProjectsPanel(props: HomeProjectsViewProps) {
         props.onWheel(event)
       }}
     >
+      <div class={props.dropdown ? "px-1.5 pb-2" : "pl-1.5 pr-3 pb-2"}>
+        <div class="flex items-center rounded-lg bg-v2-background-bg-layer-02 p-0.5 text-xs font-medium">
+          <button
+            type="button"
+            class="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-v2-background-bg-base py-1 px-2 font-medium text-v2-text-text-base shadow-sm transition-colors"
+          >
+            <Icon name="code" size="small" />
+            <span>Projects</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate("/chat")}
+            class="flex flex-1 items-center justify-center gap-1.5 rounded-md py-1 px-2 font-medium text-v2-text-text-muted hover:text-v2-text-text-base transition-colors"
+          >
+            <Icon name="speech-bubble" size="small" />
+            <span>Chats</span>
+          </button>
+        </div>
+      </div>
       <Show when={!props.dropdown}>
         <div class="flex h-7 min-w-0 shrink-0 items-center justify-between pl-1.5 pr-3">
           {/* Below lg, Projects heads the page on the collapsed sidebar toggle's line. Starting the space at the row's
